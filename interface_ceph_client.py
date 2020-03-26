@@ -43,6 +43,10 @@ class CephClientRequires(Object):
             charm.on[relation_name].relation_changed,
             self.on_changed)
 
+    def request_osd_settings(self, settings):
+        relation = self.model.get_relation(self.relation_name)
+        relation.data[self.model.unit]['osd-settings'] = json.dumps(settings)
+
     def mon_hosts(self, mon_ips):
         """List of all monitor host public addresses"""
         hosts = []
