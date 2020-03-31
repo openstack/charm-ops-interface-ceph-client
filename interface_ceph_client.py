@@ -14,7 +14,9 @@ from ops.framework import (
 import charmhelpers.contrib.storage.linux.ceph as ch_ceph
 import charmhelpers.core.hookenv as hookenv
 import charmhelpers.contrib.network.ip as ch_ip
+import logging
 
+logger = logging.getLogger() 
 
 class BrokerAvailableEvent(EventBase):
     pass
@@ -45,7 +47,9 @@ class CephClientRequires(Object):
 
     def request_osd_settings(self, settings):
         relation = self.model.get_relation(self.relation_name)
-        relation.data[self.model.unit]['osd-settings'] = json.dumps(settings)
+        relation.data[self.model.unit]['osd-settings'] = json.dumps(
+            settings,
+            sort_keys=True)
 
     def mon_hosts(self, mon_ips):
         """List of all monitor host public addresses"""
@@ -86,25 +90,29 @@ class CephClientRequires(Object):
             return relation_data
 
     def on_changed(self, event):
+        logging.info("ceph client on_changed")
         relation_data = self.get_relation_data()
         if relation_data:
+            logging.info("emiting broker_available")
             self.on.broker_available.emit()
             if self.get_pool_data(relation_data=relation_data):
+                logging.info("emiting pools available")
                 self.on.pools_available.emit()
             else:
-                hookenv.log("incomplete request. broker_req not found")
+                logging.info("incomplete request. broker_req not found")
 
     def get_existing_request(self):
+        logging.info("get_existing_request")
         # json.dumps of the CephBrokerRq()
         rq = ch_ceph.CephBrokerRq()
 
         if self.state.broker_req:
             try:
                 j = json.loads(self.state.broker_req)
-                hookenv.log("Json request: {}".format(self.state.broker_req))
+                logging.info("Json request: {}".format(self.state.broker_req))
                 rq.set_ops(j['ops'])
             except ValueError as err:
-                hookenv.log("Unable to decode broker_req: {}. Error {}".format(
+                logging.info("Unable to decode broker_req: {}. Error {}".format(
                     self.state.broker_req, err))
         return rq
 
@@ -123,6 +131,7 @@ class CephClientRequires(Object):
         @param namespace: A group can optionally have a namespace defined that
                           will be used to further restrict pool access.
         """
+        logging.info("create_replicated_pool")
         relations = self.framework.model.relations[self.name]
         if not relations:
             return
@@ -137,6 +146,7 @@ class CephClientRequires(Object):
         ch_ceph.send_request_if_needed(rq, relation=self.name)
 
     def request_ceph_permissions(self, client_name, permissions):
+        logging.info("request_ceph_permissions")
         relations = self.framework.model.relations[self.name]
         if not relations:
             return
