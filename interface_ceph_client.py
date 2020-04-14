@@ -1,22 +1,23 @@
 #!/usr/bin/env python3
 
+import logging
 import json
 import sys
+sys.path.append('lib') # noqa
 
-sys.path.append('lib')
+import charmhelpers.contrib.storage.linux.ceph as ch_ceph
+import charmhelpers.contrib.network.ip as ch_ip
 
 from ops.framework import (
     StoredState,
     EventBase,
-    EventsBase,
+    EventSetBase,
     EventSource,
-    Object)
-import charmhelpers.contrib.storage.linux.ceph as ch_ceph
-import charmhelpers.core.hookenv as hookenv
-import charmhelpers.contrib.network.ip as ch_ip
-import logging
+    Object
+)
 
-logger = logging.getLogger() 
+logger = logging.getLogger(__name__)
+
 
 class BrokerAvailableEvent(EventBase):
     pass
@@ -26,7 +27,7 @@ class PoolAvailableEvent(EventBase):
     pass
 
 
-class CephClientEvents(EventsBase):
+class CephClientEvents(EventSetBase):
     broker_available = EventSource(BrokerAvailableEvent)
     pools_available = EventSource(PoolAvailableEvent)
 
@@ -112,8 +113,8 @@ class CephClientRequires(Object):
                 logging.info("Json request: {}".format(self.state.broker_req))
                 rq.set_ops(j['ops'])
             except ValueError as err:
-                logging.info("Unable to decode broker_req: {}. Error {}".format(
-                    self.state.broker_req, err))
+                logging.info("Unable to decode broker_req: {}. Error {}"
+                             "".format(self.state.broker_req, err))
         return rq
 
     def create_replicated_pool(self, name, replicas=3, weight=None,
