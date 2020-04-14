@@ -40,6 +40,7 @@ class CephClientRequires(Object):
     def __init__(self, charm, relation_name):
         super().__init__(charm, relation_name)
         self.name = relation_name
+        self.this_unit = self.model.unit
         self.relation_name = relation_name
         self.state.set_default(broker_req={})
         self.framework.observe(
@@ -82,13 +83,12 @@ class CephClientRequires(Object):
             data['mon_hosts'] = self.mon_hosts(mon_ips)
         return data
 
-    def get_pool_data(self, relation_data=None):
-        if not relation_data:
-            relation_data = self.get_relation_data()
+    def existing_request_complete(self):
         rq = self.get_existing_request()
-        if rq and ch_ceph.is_request_complete(rq,
-                                              relation=self.relation_name):
-            return relation_data
+        if rq and self.is_request_complete(rq,
+                                           self.model.relations[self.name]):
+            return True
+        return False
 
     def on_changed(self, event):
         logging.info("ceph client on_changed")
@@ -96,11 +96,14 @@ class CephClientRequires(Object):
         if relation_data:
             logging.info("emiting broker_available")
             self.on.broker_available.emit()
-            if self.get_pool_data(relation_data=relation_data):
+            if self.existing_request_complete():
                 logging.info("emiting pools available")
                 self.on.pools_available.emit()
             else:
                 logging.info("incomplete request. broker_req not found")
+
+    def get_broker_rsp_key(self):
+        return 'broker-rsp-{}'.format(self.this_unit.name.replace('/', '-'))
 
     def get_existing_request(self):
         logging.info("get_existing_request")
@@ -134,17 +137,22 @@ class CephClientRequires(Object):
         """
         logging.info("create_replicated_pool")
         relations = self.framework.model.relations[self.name]
+        logging.info("create_replicated_pool: {}".format(relations))
         if not relations:
             return
         rq = self.get_existing_request()
+        logging.info("Adding create_replicated_pool request")
         rq.add_op_create_replicated_pool(name=name,
                                          replica_count=replicas,
                                          pg_num=pg_num,
                                          weight=weight,
                                          group=group,
                                          namespace=namespace)
+        logging.info("Storing request")
         self.state.broker_req = rq.request
-        ch_ceph.send_request_if_needed(rq, relation=self.name)
+        logging.info("Calling send_request_if_needed")
+        # ch_ceph.send_request_if_needed(rq, relation=self.name)
+        self.send_request_if_needed(rq, relations)
 
     def request_ceph_permissions(self, client_name, permissions):
         logging.info("request_ceph_permissions")
@@ -154,6 +162,133 @@ class CephClientRequires(Object):
         rq = self.get_existing_request()
         rq.add_op({'op': 'set-key-permissions',
                    'permissions': permissions,
-                   'client': 'ceph-iscsi'})
+                   'client': client_name})
         self.state.broker_req = rq.request
-        ch_ceph.send_request_if_needed(rq, relation=self.name)
+        # ch_ceph.send_request_if_needed(rq, relation=self.name)
+        self.send_request_if_needed(rq, relations)
+
+    def get_previous_request(self, relation):
+        """Get the previous request.
+
+        :param relation: Relation to check for existing request.
+        :type relation: ops.model.Relation,
+        :returns: The previous ceph request.
+        :rtype: ch_ceph.CephBrokerRq
+        """
+        request = None
+        broker_req = relation.data[self.this_unit].get('broker_req')
+        if broker_req:
+            request_data = json.loads(broker_req)
+            request = ch_ceph.CephBrokerRq(
+                api_version=request_data['api-version'],
+                request_id=request_data['request-id'])
+            request.set_ops(request_data['ops'])
+
+        return request
+
+    def get_request_states(self, request, relations):
+        """Get the existing requests and their states.
+
+        :param request: A CephBrokerRq object
+        :type request: ch_ceph.CephBrokerRq
+        :param relations: List of relations to check for existing request.
+        :type relations: [ops.model.Relation, ...]
+        :returns: Whether request is complete.
+        :rtype: bool
+        """
+        complete = []
+        requests = {}
+        for relation in relations:
+            complete = False
+            previous_request = self.get_previous_request(relation)
+            if request == previous_request:
+                sent = True
+                complete = self.is_request_complete_for_relation(
+                    previous_request,
+                    relation)
+            else:
+                sent = False
+                complete = False
+
+            rid = "{}:{}".format(relation.name, relation.id)
+            requests[rid] = {
+                'sent': sent,
+                'complete': complete,
+            }
+
+        return requests
+
+    def is_request_complete_for_relation(self, request, relation):
+        """Check if a given request has been completed on the given relation
+
+        :param request: A CephBrokerRq object
+        :type request: ch_ceph.CephBrokerRq
+        :param relation: A relation to check for an existing request.
+        :type relation: ops.model.Relation
+        :returns: Whether request is complete.
+        :rtype: bool
+        """
+        broker_key = self.get_broker_rsp_key()
+        for unit in relation.units:
+            if relation.data[unit].get(broker_key):
+                rsp = ch_ceph.CephBrokerRsp(relation.data[unit][broker_key])
+                if rsp.request_id == request.request_id:
+                    if not rsp.exit_code:
+                        return True
+            else:
+                if relation.data[unit].get('broker_rsp'):
+                    logging.info('No response for this unit yet')
+        return False
+
+    def is_request_complete(self, request, relations):
+        """Check a functionally equivalent request has already been completed
+
+        Returns True if a similair request has been completed
+
+        :param request: A CephBrokerRq object
+        :type request: ch_ceph.CephBrokerRq
+        :param relations: List of relations to check for existing request.
+        :type relations: [ops.model.Relation, ...]
+        :returns: Whether request is complete.
+        :rtype: bool
+        """
+        states = self.get_request_states(request, relations)
+        for rid in states.keys():
+            if not states[rid]['complete']:
+                return False
+
+        return True
+
+    def is_request_sent(self, request, relations):
+        """Check if a functionally equivalent request has already been sent
+
+        Returns True if a similair request has been sent
+
+        :param request: A CephBrokerRq object
+        :type request: ch_ceph.CephBrokerRq
+        :param relations: List of relations to check for existing request.
+        :type relations: [ops.model.Relation, ...]
+        :returns: Whether equivalent request has been sent.
+        :rtype: bool
+        """
+        states = self.get_request_states(request, relations)
+        for rid in states.keys():
+            if not states[rid]['sent']:
+                return False
+
+        return True
+
+    def send_request_if_needed(self, request, relations):
+        """Send request if an equivalent request has not already been sent
+
+        :param request: A CephBrokerRq object
+        :type request: ch_ceph.CephBrokerRq
+        :param relations: List of relations to check for existing request.
+        :type relations: [ops.model.Relation, ...]
+        """
+        if self.is_request_sent(request, relations):
+            logging.debug('Request already sent, not sending new request')
+        else:
+            for relation in relations:
+                logging.debug('Sending request {}'.format(request.request_id))
+                relation.data[self.this_unit]['broker_req'] = request.request
