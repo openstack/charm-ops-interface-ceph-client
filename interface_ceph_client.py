@@ -11,7 +11,7 @@ import charmhelpers.contrib.network.ip as ch_ip
 from ops.framework import (
     StoredState,
     EventBase,
-    EventSetBase,
+    ObjectEvents,
     EventSource,
     Object
 )
@@ -27,7 +27,7 @@ class PoolAvailableEvent(EventBase):
     pass
 
 
-class CephClientEvents(EventSetBase):
+class CephClientEvents(ObjectEvents):
     broker_available = EventSource(BrokerAvailableEvent)
     pools_available = EventSource(PoolAvailableEvent)
 
