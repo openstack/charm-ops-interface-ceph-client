@@ -46,8 +46,17 @@ class CephClientRequires(Object):
             pools_available=False,
             broker_req={})
         self.framework.observe(
+            charm.on[relation_name].relation_joined,
+            self.on_joined)
+        self.framework.observe(
             charm.on[relation_name].relation_changed,
             self.on_changed)
+
+    def on_joined(self, event):
+        relation = self.model.get_relation(self.relation_name)
+        if relation:
+            logging.info("emiting broker_available")
+            self.on.broker_available.emit()
 
     def request_osd_settings(self, settings):
         relation = self.model.get_relation(self.relation_name)
@@ -100,8 +109,6 @@ class CephClientRequires(Object):
         logging.info("ceph client on_changed")
         relation_data = self.get_relation_data()
         if relation_data:
-            logging.info("emiting broker_available")
-            self.on.broker_available.emit()
             if self.existing_request_complete():
                 logging.info("emiting pools available")
                 self.state.pools_available = True
