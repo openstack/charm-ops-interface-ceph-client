@@ -104,6 +104,7 @@ class CephClientRequires(Object):
             self.on.broker_available.emit()
             if self.existing_request_complete():
                 logging.info("emiting pools available")
+                self.state.pools_available = True
                 self.on.pools_available.emit()
             else:
                 logging.info("incomplete request. broker_req not found")
