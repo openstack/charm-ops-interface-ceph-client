@@ -42,7 +42,9 @@ class CephClientRequires(Object):
         self.name = relation_name
         self.this_unit = self.model.unit
         self.relation_name = relation_name
-        self.state.set_default(broker_req={})
+        self.state.set_default(
+            pools_available=False,
+            broker_req={})
         self.framework.observe(
             charm.on[relation_name].relation_changed,
             self.on_changed)
@@ -52,6 +54,10 @@ class CephClientRequires(Object):
         relation.data[self.model.unit]['osd-settings'] = json.dumps(
             settings,
             sort_keys=True)
+
+    @property
+    def pools_available(self):
+        return self.state.pools_available
 
     def mon_hosts(self, mon_ips):
         """List of all monitor host public addresses"""
