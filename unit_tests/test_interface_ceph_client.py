@@ -116,12 +116,16 @@ class TestCephClientRequires(unittest.TestCase):
             name='another-pool',
             replica_count=3)
 
-    def apply_unit_data(self, test_case, rel_id):
+    def apply_unit_data(self, test_case, rel_id,
+                        load_requst_from_client=True):
         for unit_name, data in test_case.items():
-            self.harness.add_relation_unit(
+            if not load_requst_from_client and unit_name.startswith('client'):
+                continue
+            self.harness.add_relation_unit(rel_id, unit_name)
+            self.harness.update_relation_data(
                 rel_id,
                 unit_name,
-                remote_unit_data=test_case[unit_name]['remote_unit_data'])
+                test_case[unit_name]['remote_unit_data'])
 
     def harness_setup(self, test_case, load_requst_from_client=False):
         rel_id = self.harness.add_relation('ceph-client', 'ceph-mon')
@@ -138,7 +142,8 @@ class TestCephClientRequires(unittest.TestCase):
         self.ceph_client = CephClientRequires(self.harness.charm,
                                               'ceph-client')
         relation_id = self.harness.add_relation('ceph-client', 'ceph-mon')
-        self.harness.add_relation_unit(
+        self.harness.add_relation_unit(relation_id, 'ceph-mon/0')
+        self.harness.update_relation_data(
             relation_id,
             'ceph-mon/0',
             {'ingress-address': '192.0.2.2'}
@@ -175,7 +180,8 @@ class TestCephClientRequires(unittest.TestCase):
         relation_id_a = self.harness.add_relation('ceph-client', 'ceph-monA')
         relation_id_b = self.harness.add_relation('ceph-client', 'ceph-monB')
         self.harness.begin()
-        self.harness.add_relation_unit(
+        self.harness.add_relation_unit(relation_id_a, 'ceph-monA/0')
+        self.harness.update_relation_data(
             relation_id_a,
             'ceph-monA/0',
             {'ingress-address': '192.0.2.2',
@@ -183,12 +189,14 @@ class TestCephClientRequires(unittest.TestCase):
              'key': 'foo',
              'auth': 'bar'},
         )
-        self.harness.add_relation_unit(
+        self.harness.add_relation_unit(relation_id_a, 'ceph-monA/1')
+        self.harness.update_relation_data(
             relation_id_a,
             'ceph-monA/1',
             {'ingress-address': '192.0.2.3'},
         )
-        self.harness.add_relation_unit(
+        self.harness.add_relation_unit(relation_id_b, 'ceph-monB/0')
+        self.harness.update_relation_data(
             relation_id_b,
             'ceph-monB/0',
             {'ingress-address': '2001:DB8::1',
@@ -196,7 +204,8 @@ class TestCephClientRequires(unittest.TestCase):
              'key': 'foo',
              'auth': 'bar'},
         )
-        self.harness.add_relation_unit(
+        self.harness.add_relation_unit(relation_id_b, 'ceph-monB/1')
+        self.harness.update_relation_data(
             relation_id_b,
             'ceph-monB/1',
             {'ingress-address': '2001:DB8::2',
@@ -246,24 +255,28 @@ class TestCephClientRequires(unittest.TestCase):
                                        receiver)
         # No data yet.
         relation_id = self.harness.add_relation('ceph-client', 'ceph-mon')
-        self.harness.add_relation_unit(
+        # Get broker_available as soon as relation is present.
+
+        self.assertEqual(len(receiver.observed_events), 0)
+        self.harness.add_relation_unit(relation_id, 'ceph-mon/0')
+        self.harness.update_relation_data(
             relation_id,
             'ceph-mon/0',
             {'ingress-address': '192.0.2.2',
              'ceph-public-address': '192.0.2.2'},
         )
-        self.assertEqual(len(receiver.observed_events), 0)
 
         # Got the necessary data - should get a BrokerAvailable event.
-        self.apply_unit_data(self.TEST_CASE_1, relation_id)
+        self.apply_unit_data(
+            self.TEST_CASE_1,
+            relation_id,
+            load_requst_from_client=False)
         # 1 broker_available event per mon and 1 completed request: 4 events
         self.assertEqual(len(receiver.observed_events), 4)
         self.assertIsInstance(receiver.observed_events[0],
                               BrokerAvailableEvent)
 
     @mock.patch.object(CephClientRequires, 'send_request_if_needed')
-    # Expected failure, need https://github.com/canonical/operator/pull/196
-    @unittest.expectedFailure
     def test_create_replicated_pool(self, _send_request_if_needed):
         # TODO: Replace mocking with real calls. Otherwise this test is not
         # very useful.
@@ -279,8 +292,6 @@ class TestCephClientRequires(unittest.TestCase):
         _send_request_if_needed.assert_called()
 
     @mock.patch.object(CephClientRequires, 'send_request_if_needed')
-    # Expected failure, need https://github.com/canonical/operator/pull/196
-    @unittest.expectedFailure
     def test_create_request_ceph_permissions(self, _send_request_if_needed):
         # TODO: Replace mocking with real calls. Otherwise this test is not
         # very useful.
