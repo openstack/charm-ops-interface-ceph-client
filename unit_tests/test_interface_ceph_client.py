@@ -26,7 +26,9 @@ from ops.testing import Harness
 
 from charmhelpers.contrib.storage.linux.ceph import CephBrokerRq
 
-from interface_ceph_client import CephClientRequires, BrokerAvailableEvent
+from interface_ceph_client.ceph_client import (
+    CephClientRequires,
+    BrokerAvailableEvent)
 
 
 class TestCephClientRequires(unittest.TestCase):
