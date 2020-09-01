@@ -18,13 +18,15 @@ import copy
 import unittest
 import json
 
-from unittest import mock
+from mock import patch, Mock
 
 from ops import framework
 from ops.charm import CharmBase
 from ops.testing import Harness
 
-from charmhelpers.contrib.storage.linux.ceph import CephBrokerRq
+with patch('charmhelpers.core.host_factory.ubuntu.cmp_pkgrevno',
+           Mock(return_value=1)):
+    from charmhelpers.contrib.storage.linux.ceph import CephBrokerRq
 
 from interface_ceph_client.ceph_client import (
     CephClientRequires,
@@ -254,7 +256,7 @@ class TestCephClientRequires(unittest.TestCase):
                                               'ceph-client')
         receiver = TestReceiver(self.harness.framework, 'receiver')
         self.harness.framework.observe(self.ceph_client.on.broker_available,
-                                       receiver)
+                                       receiver.on_broker_available)
         # No data yet.
         relation_id = self.harness.add_relation('ceph-client', 'ceph-mon')
         # Get broker_available as soon as relation is present.
@@ -278,7 +280,7 @@ class TestCephClientRequires(unittest.TestCase):
         self.assertIsInstance(receiver.observed_events[0],
                               BrokerAvailableEvent)
 
-    @mock.patch.object(CephClientRequires, 'send_request_if_needed')
+    @patch.object(CephClientRequires, 'send_request_if_needed')
     def test_create_replicated_pool(self, _send_request_if_needed):
         # TODO: Replace mocking with real calls. Otherwise this test is not
         # very useful.
@@ -293,7 +295,7 @@ class TestCephClientRequires(unittest.TestCase):
         self.ceph_client.create_replicated_pool('ceph-client')
         _send_request_if_needed.assert_called()
 
-    @mock.patch.object(CephClientRequires, 'send_request_if_needed')
+    @patch.object(CephClientRequires, 'send_request_if_needed')
     def test_create_request_ceph_permissions(self, _send_request_if_needed):
         # TODO: Replace mocking with real calls. Otherwise this test is not
         # very useful.
