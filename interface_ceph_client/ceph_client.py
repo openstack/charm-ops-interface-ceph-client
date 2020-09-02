@@ -35,14 +35,14 @@ class CephClientEvents(ObjectEvents):
 class CephClientRequires(Object):
 
     on = CephClientEvents()
-    state = StoredState()
+    _stored = StoredState()
 
     def __init__(self, charm, relation_name):
         super().__init__(charm, relation_name)
         self.name = relation_name
         self.this_unit = self.model.unit
         self.relation_name = relation_name
-        self.state.set_default(
+        self._stored.set_default(
             pools_available=False,
             broker_req={})
         self.framework.observe(
@@ -66,7 +66,7 @@ class CephClientRequires(Object):
 
     @property
     def pools_available(self):
-        return self.state.pools_available
+        return self._stored.pools_available
 
     def mon_hosts(self, mon_ips):
         """List of all monitor host public addresses"""
@@ -111,7 +111,7 @@ class CephClientRequires(Object):
         if relation_data:
             if self.existing_request_complete():
                 logging.info("emiting pools available")
-                self.state.pools_available = True
+                self._stored.pools_available = True
                 self.on.pools_available.emit()
             else:
                 logging.info("incomplete request. broker_req not found")
@@ -124,14 +124,15 @@ class CephClientRequires(Object):
         # json.dumps of the CephBrokerRq()
         rq = ch_ceph.CephBrokerRq()
 
-        if self.state.broker_req:
+        if self._stored.broker_req:
             try:
-                j = json.loads(self.state.broker_req)
-                logging.info("Json request: {}".format(self.state.broker_req))
+                j = json.loads(self._stored.broker_req)
+                logging.info(
+                    "Json request: {}".format(self._stored.broker_req))
                 rq.set_ops(j['ops'])
             except ValueError as err:
                 logging.info("Unable to decode broker_req: {}. Error {}"
-                             "".format(self.state.broker_req, err))
+                             "".format(self._stored.broker_req, err))
         return rq
 
     def create_replicated_pool(self, name, replicas=3, weight=None,
@@ -163,7 +164,7 @@ class CephClientRequires(Object):
                                          group=group,
                                          namespace=namespace)
         logging.info("Storing request")
-        self.state.broker_req = rq.request
+        self._stored.broker_req = rq.request
         logging.info("Calling send_request_if_needed")
         # ch_ceph.send_request_if_needed(rq, relation=self.name)
         self.send_request_if_needed(rq, relations)
@@ -177,7 +178,7 @@ class CephClientRequires(Object):
         rq.add_op({'op': 'set-key-permissions',
                    'permissions': permissions,
                    'client': client_name})
-        self.state.broker_req = rq.request
+        self._stored.broker_req = rq.request
         # ch_ceph.send_request_if_needed(rq, relation=self.name)
         self.send_request_if_needed(rq, relations)
 

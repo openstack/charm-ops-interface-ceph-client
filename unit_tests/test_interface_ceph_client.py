@@ -138,7 +138,7 @@ class TestCephClientRequires(unittest.TestCase):
         ceph_client = CephClientRequires(self.harness.charm, 'ceph-client')
         if load_requst_from_client:
             raw_rq = test_case['client/0']['remote_unit_data']['broker_req']
-            ceph_client.state.broker_req = raw_rq
+            ceph_client._stored.broker_req = raw_rq
         return ceph_client
 
     def test_request_osd_settings(self):
