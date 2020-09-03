@@ -131,8 +131,10 @@ class CephClientRequires(Object):
                     "Json request: {}".format(self._stored.broker_req))
                 rq.set_ops(j['ops'])
             except ValueError as err:
-                logging.info("Unable to decode broker_req: {}. Error {}"
-                             "".format(self._stored.broker_req, err))
+                logging.info(
+                    "Unable to decode broker_req: %s. Error %s",
+                    self._stored.broker_req,
+                    err)
         return rq
 
     def create_replicated_pool(self, name, replicas=3, weight=None,
@@ -152,7 +154,7 @@ class CephClientRequires(Object):
         """
         logging.info("create_replicated_pool")
         relations = self.framework.model.relations[self.name]
-        logging.info("create_replicated_pool: {}".format(relations))
+        logging.info("create_replicated_pool: %s", relations)
         if not relations:
             return
         rq = self.get_existing_request()
@@ -305,5 +307,7 @@ class CephClientRequires(Object):
             logging.debug('Request already sent, not sending new request')
         else:
             for relation in relations:
-                logging.debug('Sending request {}'.format(request.request_id))
+                logging.debug(
+                    'Sending request %s',
+                    request.request_id)
                 relation.data[self.this_unit]['broker_req'] = request.request
