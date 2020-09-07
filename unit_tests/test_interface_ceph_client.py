@@ -282,8 +282,6 @@ class TestCephClientRequires(unittest.TestCase):
 
     @patch.object(CephClientRequires, 'send_request_if_needed')
     def test_create_replicated_pool(self, _send_request_if_needed):
-        # TODO: Replace mocking with real calls. Otherwise this test is not
-        # very useful.
         self.harness.begin()
         self.ceph_client = CephClientRequires(self.harness.charm,
                                               'ceph-client')
@@ -294,6 +292,47 @@ class TestCephClientRequires(unittest.TestCase):
         self.harness.add_relation('ceph-client', 'ceph-mon')
         self.ceph_client.create_replicated_pool('ceph-client')
         _send_request_if_needed.assert_called()
+        send_request_call = _send_request_if_needed.call_args
+        rq, relation = send_request_call[0]
+        expect_obj = CephBrokerRq()
+        expect_obj.add_op_create_pool('ceph-client')
+        self.assertEqual(rq, expect_obj)
+
+    @patch.object(CephClientRequires, 'send_request_if_needed')
+    def test_create_erasure_pool(self, _send_request_if_needed):
+        self.harness.begin()
+        self.harness.add_relation('ceph-client', 'ceph-mon')
+        self.ceph_client = CephClientRequires(self.harness.charm,
+                                              'ceph-client')
+
+        self.ceph_client.create_erasure_pool(
+            'ceph-client',
+            erasure_profile='myec-profile')
+        _send_request_if_needed.assert_called()
+        send_request_call = _send_request_if_needed.call_args
+        rq, relation = send_request_call[0]
+        expect_obj = CephBrokerRq()
+        expect_obj.add_op_create_erasure_pool(
+            'ceph-client',
+            erasure_profile='myec-profile')
+        self.assertEqual(rq, expect_obj)
+
+    @patch.object(CephClientRequires, 'send_request_if_needed')
+    def test_create_erasure_profile(self, _send_request_if_needed):
+        self.harness.begin()
+        self.harness.add_relation('ceph-client', 'ceph-mon')
+        self.ceph_client = CephClientRequires(self.harness.charm,
+                                              'ceph-client')
+
+        self.ceph_client.create_erasure_profile(
+            'myec-profile')
+        _send_request_if_needed.assert_called()
+        send_request_call = _send_request_if_needed.call_args
+        rq, relation = send_request_call[0]
+        expect_obj = CephBrokerRq()
+        expect_obj.add_op_create_erasure_profile(
+            'myec-profile')
+        self.assertEqual(rq, expect_obj)
 
     @patch.object(CephClientRequires, 'send_request_if_needed')
     def test_create_request_ceph_permissions(self, _send_request_if_needed):

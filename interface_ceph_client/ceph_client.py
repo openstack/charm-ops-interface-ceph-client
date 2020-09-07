@@ -137,39 +137,206 @@ class CephClientRequires(Object):
                     err)
         return rq
 
-    def create_replicated_pool(self, name, replicas=3, weight=None,
-                               pg_num=None, group=None, namespace=None):
+    def _handle_broker_request(self, request_method, **kwargs):
+        """Handle a broker request
+
+        Add a ceph broker request using `request_method` and the provided
+        `kwargs`.
+
+        :param request_method: ch_ceph.CephBrokerRq method name to use for
+                               request.
+        :type request_method,: str
         """
-        Request pool setup
-        @param name: Name of pool to create
-        @param replicas: Number of replicas for supporting pools
-        @param weight: The percentage of data the pool makes up
-        @param pg_num: If not provided, this value will be calculated by the
-                       broker based on how many OSDs are in the cluster at the
-                       time of creation. Note that, if provided, this value
-                       will be capped at the current available maximum.
-        @param group: Group to add pool to.
-        @param namespace: A group can optionally have a namespace defined that
-                          will be used to further restrict pool access.
-        """
-        logging.info("create_replicated_pool")
         relations = self.framework.model.relations[self.name]
-        logging.info("create_replicated_pool: %s", relations)
+        logging.info("%s: %s", request_method, relations)
         if not relations:
             return
         rq = self.get_existing_request()
-        logging.info("Adding create_replicated_pool request")
-        rq.add_op_create_replicated_pool(name=name,
-                                         replica_count=replicas,
-                                         pg_num=pg_num,
-                                         weight=weight,
-                                         group=group,
-                                         namespace=namespace)
+        logging.info("Adding %s request", request_method)
+        getattr(rq, request_method)(**kwargs)
         logging.info("Storing request")
         self._stored.broker_req = rq.request
         logging.info("Calling send_request_if_needed")
-        # ch_ceph.send_request_if_needed(rq, relation=self.name)
         self.send_request_if_needed(rq, relations)
+
+    def _handle_pool_create_broker_request(self, request_method, **kwargs):
+        """Process request to create a pool.
+
+        :param request_method: ch_ceph.CephBrokerRq method name to use for
+                               request.
+        :type request_method: str
+        :param app_name: Tag pool with application name. Note that there is
+                         certain protocols emerging upstream with regard to
+                         meaningful application names to use.
+                         Examples are 'rbd' and 'rgw'.
+        :type app_name: Optional[str]
+        :param compression_algorithm: Compressor to use, one of:
+                                      ('lz4', 'snappy', 'zlib', 'zstd')
+        :type compression_algorithm: Optional[str]
+        :param compression_mode: When to compress data, one of:
+                                 ('none', 'passive', 'aggressive', 'force')
+        :type compression_mode: Optional[str]
+        :param compression_required_ratio: Minimum compression ratio for data
+                                           chunk, if the requested ratio is not
+                                           achieved the compressed version will
+                                           be thrown away and the original
+                                           stored.
+        :type compression_required_ratio: Optional[float]
+        :param compression_min_blob_size: Chunks smaller than this are never
+                                          compressed (unit: bytes).
+        :type compression_min_blob_size: Optional[int]
+        :param compression_min_blob_size_hdd: Chunks smaller than this are not
+                                              compressed when destined to
+                                              rotational media (unit: bytes).
+        :type compression_min_blob_size_hdd: Optional[int]
+        :param compression_min_blob_size_ssd: Chunks smaller than this are not
+                                              compressed when destined to flash
+                                              media (unit: bytes).
+        :type compression_min_blob_size_ssd: Optional[int]
+        :param compression_max_blob_size: Chunks larger than this are broken
+                                          into N * compression_max_blob_size
+                                          chunks before being compressed
+                                          (unit: bytes).
+        :type compression_max_blob_size: Optional[int]
+        :param compression_max_blob_size_hdd: Chunks larger than this are
+                                              broken into
+                                              N * compression_max_blob_size_hdd
+                                              chunks before being compressed
+                                              when destined for rotational
+                                              media (unit: bytes)
+        :type compression_max_blob_size_hdd: Optional[int]
+        :param compression_max_blob_size_ssd: Chunks larger than this are
+                                              broken into
+                                              N * compression_max_blob_size_ssd
+                                              chunks before being compressed
+                                              when destined for flash media
+                                              (unit: bytes).
+        :type compression_max_blob_size_ssd: Optional[int]
+        :param group: Group to add pool to
+        :type group: Optional[str]
+        :param max_bytes: Maximum bytes quota to apply
+        :type max_bytes: Optional[int]
+        :param max_objects: Maximum objects quota to apply
+        :type max_objects: Optional[int]
+        :param namespace: Group namespace
+        :type namespace: Optional[str]
+        :param weight: The percentage of data that is expected to be contained
+                       in the pool from the total available space on the OSDs.
+                       Used to calculate number of Placement Groups to create
+                       for pool.
+        :type weight: Optional[float]
+        :raises: AssertionError
+        """
+        self._handle_broker_request(
+            request_method,
+            **kwargs)
+
+    def create_replicated_pool(self, name, replicas=3, pg_num=None,
+                               **kwargs):
+        """Adds an operation to create a replicated pool.
+
+        See docstring of `_handle_pool_create_broker_request` for additional
+        common pool creation arguments.
+
+        :param name: Name of pool to create
+        :type name: str
+        :param replicas: Number of copies Ceph should keep of your data.
+        :type replicas: int
+        :param pg_num: Request specific number of Placement Groups to create
+                       for pool.
+        :type pg_num: int
+        :raises: AssertionError if provided data is of invalid type/range
+        """
+        self._handle_pool_create_broker_request(
+            'add_op_create_replicated_pool',
+            name=name,
+            replica_count=replicas,
+            pg_num=pg_num,
+            **kwargs)
+
+    def create_erasure_pool(self, name, erasure_profile=None,
+                            allow_ec_overwrites=False, **kwargs):
+        """Adds an operation to create a erasure coded pool.
+
+        See docstring of `_handle_pool_create_broker_request` for additional
+        common pool creation arguments.
+
+        :param name: Name of pool to create
+        :type name: str
+        :param erasure_profile: Name of erasure code profile to use.  If not
+                                set the ceph-mon unit handling the broker
+                                request will set its default value.
+        :type erasure_profile: str
+        :param allow_ec_overwrites: allow EC pools to be overriden
+        :type allow_ec_overwrites: bool
+        :raises: AssertionError if provided data is of invalid type/range
+        """
+        self._handle_pool_create_broker_request(
+            'add_op_create_erasure_pool',
+            name=name,
+            erasure_profile=erasure_profile,
+            allow_ec_overwrites=allow_ec_overwrites,
+            **kwargs)
+
+    def create_erasure_profile(self, name,
+                               erasure_type='jerasure',
+                               erasure_technique=None,
+                               k=None, m=None,
+                               failure_domain=None,
+                               lrc_locality=None,
+                               shec_durability_estimator=None,
+                               clay_helper_chunks=None,
+                               device_class=None,
+                               clay_scalar_mds=None,
+                               lrc_crush_locality=None):
+        """Adds an operation to create a erasure coding profile.
+
+        :param name: Name of profile to create
+        :type name: str
+        :param erasure_type: Which of the erasure coding plugins should be used
+        :type erasure_type: string
+        :param erasure_technique: EC plugin technique to use
+        :type erasure_technique: string
+        :param k: Number of data chunks
+        :type k: int
+        :param m: Number of coding chunks
+        :type m: int
+        :param lrc_locality: Group the coding and data chunks into sets of size
+                             locality (lrc plugin)
+        :type lrc_locality: int
+        :param durability_estimator: The number of parity chuncks each of which
+                                     includes a data chunk in its calculation
+                                     range (shec plugin)
+        :type durability_estimator: int
+        :param helper_chunks: The number of helper chunks to use for recovery
+                              operations (clay plugin)
+        :type: helper_chunks: int
+        :param failure_domain: Type of failure domain from Ceph bucket types
+                               to be used
+        :type failure_domain: string
+        :param device_class: Device class to use for profile (ssd, hdd)
+        :type device_class: string
+        :param clay_scalar_mds: Plugin to use for CLAY layered construction
+                                (jerasure|isa|shec)
+        :type clay_scaler_mds: string
+        :param lrc_crush_locality: Type of crush bucket in which set of chunks
+                                   defined by lrc_locality will be stored.
+        :type lrc_crush_locality: string
+        """
+        self._handle_broker_request(
+            'add_op_create_erasure_profile',
+            name=name,
+            erasure_type=erasure_type,
+            erasure_technique=erasure_technique,
+            k=k, m=m,
+            failure_domain=failure_domain,
+            lrc_locality=lrc_locality,
+            shec_durability_estimator=shec_durability_estimator,
+            clay_helper_chunks=clay_helper_chunks,
+            device_class=device_class,
+            clay_scalar_mds=clay_scalar_mds,
+            lrc_crush_locality=lrc_crush_locality
+        )
 
     def request_ceph_permissions(self, client_name, permissions):
         logging.info("request_ceph_permissions")
