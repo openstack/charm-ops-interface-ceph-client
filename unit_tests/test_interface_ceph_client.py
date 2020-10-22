@@ -356,23 +356,22 @@ class TestCephClientRequires(unittest.TestCase):
         self.ceph_client.create_replicated_pool('ceph-client')
         _send_request_if_needed.assert_called()
 
-    def test_get_previous_request(self):
+    def test_get_previous_requests_from_relations(self):
         ceph_client = self.harness_setup(
             self.TEST_CASE_1,
             load_requst_from_client=False)
-        rel = self.harness.charm.model.get_relation('ceph-client')
+        previous_requests = ceph_client.get_previous_requests_from_relations()
         self.assertEqual(
-            ceph_client.get_previous_request(rel).request_id,
+            previous_requests['ceph-client:0'].request_id,
             'a3ad24dd-7e2f-11ea-8ba2-e5a5b68b415f')
 
-    def test_get_previous_request_no_request(self):
+    def test_get_previous_requests_from_relations_no_request(self):
         ceph_client = self.harness_setup(
             self.TEST_CASE_0,
             load_requst_from_client=False)
-        rel = self.harness.charm.model.get_relation('ceph-client')
         self.assertEqual(
-            ceph_client.get_previous_request(rel),
-            None)
+            ceph_client.get_previous_requests_from_relations(),
+            {})
 
     def test_get_request_states(self):
         ceph_client = self.harness_setup(

@@ -52,19 +52,21 @@ class CephClientRequires(Object):
         self.framework.observe(
             charm.on[relation_name].relation_changed,
             self.on_changed)
+        self.new_request = ch_ceph.CephBrokerRq()
+        self.previous_requests = self.get_previous_requests_from_relations()
 
     def on_joined(self, event):
-        relation = self.model.get_relation(self.relation_name)
+        relation = self.model.relations[self.relation_name]
         if relation:
             logging.info("emiting broker_available")
             self._stored.broker_available = True
             self.on.broker_available.emit()
 
     def request_osd_settings(self, settings):
-        relation = self.model.get_relation(self.relation_name)
-        relation.data[self.model.unit]['osd-settings'] = json.dumps(
-            settings,
-            sort_keys=True)
+        for relation in self.model.relations[self.relation_name]:
+            relation.data[self.model.unit]['osd-settings'] = json.dumps(
+                settings,
+                sort_keys=True)
 
     @property
     def pools_available(self):
@@ -72,7 +74,6 @@ class CephClientRequires(Object):
 
     @property
     def broker_available(self):
-        """Whether the ceph broker is available."""
         return self._stored.broker_available
 
     def mon_hosts(self, mon_ips):
@@ -91,7 +92,7 @@ class CephClientRequires(Object):
     def get_relation_data(self):
         data = {}
         mon_ips = []
-        for relation in self.framework.model.relations[self.relation_name]:
+        for relation in self.model.relations[self.relation_name]:
             for unit in relation.units:
                 _data = {
                     'key': relation.data[unit].get('key'),
@@ -154,11 +155,11 @@ class CephClientRequires(Object):
                                request.
         :type request_method,: str
         """
-        relations = self.framework.model.relations[self.name]
+        relations = self.model.relations[self.name]
         logging.info("%s: %s", request_method, relations)
         if not relations:
             return
-        rq = self.get_existing_request()
+        rq = self.new_request
         logging.info("Adding %s request", request_method)
         getattr(rq, request_method)(**kwargs)
         logging.info("Storing request")
@@ -347,10 +348,10 @@ class CephClientRequires(Object):
 
     def request_ceph_permissions(self, client_name, permissions):
         logging.info("request_ceph_permissions")
-        relations = self.framework.model.relations[self.name]
+        relations = self.model.relations[self.name]
         if not relations:
             return
-        rq = self.get_existing_request()
+        rq = self.new_request
         rq.add_op({'op': 'set-key-permissions',
                    'permissions': permissions,
                    'client': client_name})
@@ -358,24 +359,24 @@ class CephClientRequires(Object):
         # ch_ceph.send_request_if_needed(rq, relation=self.name)
         self.send_request_if_needed(rq, relations)
 
-    def get_previous_request(self, relation):
-        """Get the previous request.
+    def get_previous_requests_from_relations(self):
+        """Get the previous requests.
 
-        :param relation: Relation to check for existing request.
-        :type relation: ops.model.Relation,
-        :returns: The previous ceph request.
-        :rtype: ch_ceph.CephBrokerRq
+        :returns: The previous ceph requests.
+        :rtype: Dict[str, ch_ceph.CephBrokerRq]
         """
-        request = None
-        broker_req = relation.data[self.this_unit].get('broker_req')
-        if broker_req:
-            request_data = json.loads(broker_req)
-            request = ch_ceph.CephBrokerRq(
-                api_version=request_data['api-version'],
-                request_id=request_data['request-id'])
-            request.set_ops(request_data['ops'])
-
-        return request
+        requests = {}
+        for relation in self.model.relations[self.relation_name]:
+            broker_req = relation.data[self.this_unit].get('broker_req')
+            rid = "{}:{}".format(relation.name, relation.id)
+            if broker_req:
+                request_data = json.loads(broker_req)
+                request = ch_ceph.CephBrokerRq(
+                    api_version=request_data['api-version'],
+                    request_id=request_data['request-id'])
+                request.set_ops(request_data['ops'])
+                requests[rid] = request
+        return requests
 
     def get_request_states(self, request, relations):
         """Get the existing requests and their states.
@@ -390,8 +391,11 @@ class CephClientRequires(Object):
         complete = []
         requests = {}
         for relation in relations:
+            rid = "{}:{}".format(relation.name, relation.id)
             complete = False
-            previous_request = self.get_previous_request(relation)
+            previous_request = self.previous_requests.get(
+                rid,
+                ch_ceph.CephBrokerRq())
             if request == previous_request:
                 sent = True
                 complete = self.is_request_complete_for_relation(
@@ -401,7 +405,6 @@ class CephClientRequires(Object):
                 sent = False
                 complete = False
 
-            rid = "{}:{}".format(relation.name, relation.id)
             requests[rid] = {
                 'sent': sent,
                 'complete': complete,
@@ -477,11 +480,24 @@ class CephClientRequires(Object):
         :param relations: List of relations to check for existing request.
         :type relations: [ops.model.Relation, ...]
         """
-        if self.is_request_sent(request, relations):
-            logging.debug('Request already sent, not sending new request')
-        else:
-            for relation in relations:
+        states = self.get_request_states(request, relations)
+        for relation in relations:
+            rid = "{}:{}".format(relation.name, relation.id)
+            if states[rid]['sent']:
                 logging.debug(
-                    'Sending request %s',
-                    request.request_id)
+                    ('Request %s is a duplicate of the previous broker request'
+                     ' %s. Restoring previous broker request'),
+                    request.request_id,
+                    self.previous_requests[rid].request_id)
+                # The previous request was stored at the beggining. The ops of
+                # the new request match that of the old. But as the new request
+                # was constructed broker data may have been set on the relation
+                # during the construction of this request. This is because the
+                # interface has no explicit commit method. Every op request has
+                # in implicit send which updates the relation data. So make
+                # sure # the relation data matches the data at the beggining so
+                # that a new request is not triggered.
+                request = self.previous_requests[rid]
+            else:
+                logging.debug('Sending request %s', request.request_id)
                 relation.data[self.this_unit]['broker_req'] = request.request
