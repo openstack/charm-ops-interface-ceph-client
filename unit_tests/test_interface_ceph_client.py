@@ -261,6 +261,7 @@ class TestCephClientRequires(unittest.TestCase):
         relation_id = self.harness.add_relation('ceph-client', 'ceph-mon')
         # Get broker_available as soon as relation is present.
 
+        self.assertFalse(self.ceph_client.broker_available)
         self.assertEqual(len(receiver.observed_events), 0)
         self.harness.add_relation_unit(relation_id, 'ceph-mon/0')
         self.harness.update_relation_data(
@@ -279,6 +280,7 @@ class TestCephClientRequires(unittest.TestCase):
         self.assertEqual(len(receiver.observed_events), 4)
         self.assertIsInstance(receiver.observed_events[0],
                               BrokerAvailableEvent)
+        self.assertTrue(self.ceph_client.broker_available)
 
     @patch.object(CephClientRequires, 'send_request_if_needed')
     def test_create_replicated_pool(self, _send_request_if_needed):

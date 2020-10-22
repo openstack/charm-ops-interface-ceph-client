@@ -44,6 +44,7 @@ class CephClientRequires(Object):
         self.relation_name = relation_name
         self._stored.set_default(
             pools_available=False,
+            broker_available=False,
             broker_req={})
         self.framework.observe(
             charm.on[relation_name].relation_joined,
@@ -56,6 +57,7 @@ class CephClientRequires(Object):
         relation = self.model.get_relation(self.relation_name)
         if relation:
             logging.info("emiting broker_available")
+            self._stored.broker_available = True
             self.on.broker_available.emit()
 
     def request_osd_settings(self, settings):
@@ -67,6 +69,11 @@ class CephClientRequires(Object):
     @property
     def pools_available(self):
         return self._stored.pools_available
+
+    @property
+    def broker_available(self):
+        """Whether the ceph broker is available."""
+        return self._stored.broker_available
 
     def mon_hosts(self, mon_ips):
         """List of all monitor host public addresses"""
