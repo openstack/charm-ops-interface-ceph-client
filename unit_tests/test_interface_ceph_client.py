@@ -89,7 +89,17 @@ class TestCephClientRequires(unittest.TestCase):
                     '"replicas": 3, "pg_num": null, "weight": null, '
                     '"group": null, "group-namespace": null, '
                     '"app-name": null, '
-                    '"max-bytes": null, "max-objects": null}, '
+                    '"max-bytes": null, "max-objects": null, '
+                    '"compression-algorithm": null, "compression-mode": null, '
+                    '"compression-required-ratio": null, '
+                    '"compression-min-blob-size": null, '
+                    '"compression-min-blob-size-hdd": null, '
+                    '"compression-min-blob-size-ssd": null, '
+                    '"compression-max-blob-size": null, '
+                    '"compression-max-blob-size-hdd": null, '
+                    '"compression-max-blob-size-ssd": null, '
+                    '"max-bytes": null, "max-objects": null, '
+                    '"rbd-mirroring-mode": "pool"}, '
                     '{"op": "set-key-permissions", '
                     '"permissions": ["osd", "allow *", "mon", "allow *", '
                     '"mgr", '
@@ -97,6 +107,7 @@ class TestCephClientRequires(unittest.TestCase):
                     '"request-id": "a3ad24dd-7e2f-11ea-8ba2-e5a5b68b415f"}')}}}
 
     def setUp(self):
+        self.maxDiff = None
         self.harness = Harness(CharmBase, meta='''
             name: client
             provides:
