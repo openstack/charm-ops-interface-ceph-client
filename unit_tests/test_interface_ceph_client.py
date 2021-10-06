@@ -83,6 +83,7 @@ class TestCephClientRequires(unittest.TestCase):
         'client/0': {
             'remote_unit_data': {
                 'ingress-address': '192.0.2.4',
+                'unit-name': 'client/0',
                 'broker_req': (
                     '{"api-version": 1, '
                     '"ops": [{"op": "create-pool", "name": "tmbtil", '

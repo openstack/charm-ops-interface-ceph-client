@@ -56,8 +56,12 @@ class CephClientRequires(Object):
         self.previous_requests = self.get_previous_requests_from_relations()
 
     def on_joined(self, event):
-        relation = self.model.relations[self.relation_name]
-        if relation:
+        relations = self.model.relations[self.relation_name]
+        if relations:
+            # Setup unit-name for CMR on the relation
+            for relation in relations:
+                relation.data[self.this_unit]["unit-name"] = \
+                    self.this_unit.name
             logging.info("emiting broker_available")
             self._stored.broker_available = True
             self.on.broker_available.emit()
