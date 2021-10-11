@@ -62,6 +62,8 @@ class CephClientRequires(Object):
             for relation in relations:
                 relation.data[self.this_unit]["unit-name"] = \
                     self.this_unit.name
+                relation.data[self.this_unit]["application-name"] = \
+                    self.model.app.name
             logging.info("emiting broker_available")
             self._stored.broker_available = True
             self.on.broker_available.emit()
