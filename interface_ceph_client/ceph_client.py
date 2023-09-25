@@ -54,6 +54,7 @@ class CephClientRequires(Object):
             self.on_changed)
         self.new_request = ch_ceph.CephBrokerRq()
         self.previous_requests = self.get_previous_requests_from_relations()
+        self.update_local_db()
 
     def on_joined(self, event):
         relations = self.model.relations[self.relation_name]
@@ -73,6 +74,20 @@ class CephClientRequires(Object):
             relation.data[self.model.unit]['osd-settings'] = json.dumps(
                 settings,
                 sort_keys=True)
+
+    def update_local_db(self):
+        """Update the stored state."""
+        relation_data = self.get_relation_data()
+        if relation_data:
+            self._stored.broker_available = True
+            completed = []
+            for rq in self.previous_requests.values():
+                completed.append(
+                    self.is_request_complete(
+                        rq,
+                        self.model.relations[self.name]))
+            if completed and all(completed):
+                self._stored.pools_available = True
 
     @property
     def pools_available(self):
