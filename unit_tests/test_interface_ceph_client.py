@@ -240,6 +240,43 @@ class TestCephClientRequires(unittest.TestCase):
             }
         )
 
+    def test_get_relation_data_with_ceph_public_addresses_in_app_data(self):
+        relation_id_a = self.harness.add_relation(
+            'ceph-client',
+            'microcephA',
+            app_data={
+                'ceph-mon-public-addresses': '["192.0.2.2", "192.0.2.3"]',
+            },
+        )
+        self.harness.begin()
+        self.harness.add_relation_unit(relation_id_a, 'microcephA/0')
+        self.harness.update_relation_data(
+            relation_id_a,
+            'microcephA/0',
+            {'ingress-address': '192.0.2.2',
+             'ceph-public-address': '192.0.2.2',
+             'key': 'foo',
+             'auth': 'bar'},
+        )
+        self.harness.add_relation_unit(relation_id_a, 'microcephA/1')
+        self.harness.update_relation_data(
+            relation_id_a,
+            'microcephA/1',
+            {'ingress-address': '192.0.2.3'},
+        )
+
+        self.ceph_client = CephClientRequires(self.harness.charm,
+                                              'ceph-client')
+        rel_data = self.ceph_client.get_relation_data()
+        self.assertEqual(
+            rel_data,
+            {
+                'mon_hosts': ['192.0.2.2', '192.0.2.3'],
+                'key': 'foo',
+                'auth': 'bar',
+            }
+        )
+
     def test_existing_request_complete(self):
         ceph_client = self.harness_setup(
             self.TEST_CASE_1,

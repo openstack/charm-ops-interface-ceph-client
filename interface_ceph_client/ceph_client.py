@@ -114,17 +114,45 @@ class CephClientRequires(Object):
         data = {}
         mon_ips = []
         for relation in self.model.relations[self.relation_name]:
+            mon_ips_from_app_data = []
+            ceph_mon_public_addresses = relation.data.get(
+                relation.app, {}
+            ).get("ceph-mon-public-addresses")
+            if ceph_mon_public_addresses:
+                try:
+                    mon_ips_from_app_data = json.loads(
+                        ceph_mon_public_addresses
+                    )
+                    if isinstance(mon_ips_from_app_data, list):
+                        mon_ips.extend(mon_ips_from_app_data)
+                    else:
+                        logging.warning(
+                            "Expected a list for ceph-mon-public-addresses "
+                            f"but got value {ceph_mon_public_addresses}"
+                        )
+                        # reset mon_ips_from_app_data so that ips
+                        # are updated from unit data
+                        mon_ips_from_app_data = []
+                except json.decoder.JSONDecodeError:
+                    logging.warning(
+                        "Not able to decode ceph-mon-public-addresses "
+                        f"{ceph_mon_public_addresses}"
+                    )
+
             for unit in relation.units:
                 _data = {
-                    'key': relation.data[unit].get('key'),
-                    'auth': relation.data[unit].get('auth')}
-                mon_ip = relation.data[unit].get('ceph-public-address')
-                if mon_ip:
-                    mon_ips.append(mon_ip)
+                    "key": relation.data[unit].get("key"),
+                    "auth": relation.data[unit].get("auth"),
+                }
+                if not mon_ips_from_app_data:
+                    mon_ip = relation.data[unit].get("ceph-public-address")
+                    if mon_ip:
+                        mon_ips.append(mon_ip)
                 if all(_data.values()):
                     data = _data
+
         if data:
-            data['mon_hosts'] = self.mon_hosts(mon_ips)
+            data["mon_hosts"] = self.mon_hosts(mon_ips)
         return data
 
     def existing_request_complete(self):
